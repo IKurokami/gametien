@@ -8,7 +8,7 @@ services:
     autoDeploy: true
     plan: free
 
-  - type: static
+  - type: static_site
     name: gametien-frontend
     rootDirectory: mlngame
     buildCommand: npm ci && npm run build
@@ -20,4 +20,3 @@ services:
           name: gametien-backend
           type: web
           property: url
-
