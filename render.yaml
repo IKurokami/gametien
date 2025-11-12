@@ -2,7 +2,7 @@ services:
   - type: web
     name: gametien-backend
     env: node
-    rootDirectory: backend
+    rootDir: backend
     buildCommand: npm ci && npm run build
     startCommand: node dist/index.js
     autoDeploy: true
@@ -11,7 +11,7 @@ services:
   - type: web
     name: gametien-frontend
     env: static
-    rootDirectory: mlngame
+    rootDir: mlngame
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeploy: true
