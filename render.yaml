@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: gametien-backend
+    env: node
+    rootDirectory: backend
+    buildCommand: npm ci && npm run build
+    startCommand: node dist/index.js
+    autoDeploy: true
+    plan: free
+
+  - type: static
+    name: gametien-frontend
+    rootDirectory: mlngame
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_BASE
+        fromService:
+          name: gametien-backend
+          type: web
+          property: url
+

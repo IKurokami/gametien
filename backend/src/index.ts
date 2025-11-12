@@ -1,6 +1,6 @@
 import express from 'express'
 import cors from 'cors'
-import { cancelOffer, createOffer, createRoom, fillOffer, indicativePrices, joinRoom, lockAction, nextRoundOrEnd, publicState, startGame } from './engine'
+import { cancelOffer, createOffer, createRoom, fillOffer, indicativePrices, joinRoom, lockAction, nextRoundOrEnd, publicState, startGame } from './engine.js'
 import type { Action } from './types'
 
 const app = express()

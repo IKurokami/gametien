@@ -14,9 +14,10 @@ const clampN = (n: number) => (n < -2 ? -2 : n > 2 ? 2 : (n as -2 | -1 | 0 | 1 |
 
 export const defaultConfig: RoomConfig = {
   maxPlayers: 8,
-  roundSeconds: 75,
+  roundSeconds: 300,
   totalRounds: 4,
-  startingAssets: { TKL: 3, TG: 5, TS: 6, C: 1 },
+  // Tăng tổng tài sản khởi đầu; sẽ phân bổ lại ngẫu nhiên khi join
+  startingAssets: { TKL: 4, TG: 10, TS: 15, C: 1 },
 }
 
 const eventVi: Record<string, string> = {
@@ -28,13 +29,21 @@ const eventVi: Record<string, string> = {
   EXCHANGE_OUTAGE: 'Sàn giao dịch gặp sự cố',
 }
 
-const simpleDeck = [
-  'CONFIDENCE_WAVE',
-  'RUMOR_SPREAD',
-  'PANIC_SELLING',
-  'STABLE_MOOD',
-  'SURPRISE_INFLATION',
-  'EXCHANGE_OUTAGE',
+// Baseline prices for realism
+const BASE_PRICES = { TS: 5, TG: 5, TKL: 20, C: 60 }
+
+const generalEvents = [
+  { id: 'CONFIDENCE_WAVE', title: 'Làn sóng tự tin', desc: '+TS, +TKL nhẹ', eff: { TS: +1, TKL: +2 } },
+  { id: 'RUMOR_SPREAD', title: 'Tin đồn lan rộng', desc: '-TS nhẹ', eff: { TS: -1 } },
+  { id: 'PANIC_SELLING', title: 'Bán tháo hoảng loạn', desc: '-TKL vừa', eff: { TKL: -3 } },
+  { id: 'STABLE_MOOD', title: 'Tâm lý ổn định', desc: 'Không đổi', eff: {} },
+  { id: 'SURPRISE_INFLATION', title: 'Lạm phát bất ngờ', desc: '-TG mạnh', eff: { TG: -3 } },
+]
+
+const cryptoEvents = [
+  { id: 'C_PUMP', title: 'Crypto tăng tốc', desc: '+C mạnh', eff: { C: +10 }, cryptoCrashFlag: false },
+  { id: 'C_DIP', title: 'Crypto điều chỉnh', desc: '-C nhẹ', eff: { C: -5 }, cryptoCrashFlag: false },
+  { id: 'EXCHANGE_OUTAGE', title: 'Sàn giao dịch gặp sự cố', desc: '-C vừa, rủi ro giữ ≥4C: -1C cuối vòng', eff: { C: -8 }, cryptoCrashFlag: true },
 ]
 
 function shuffle<T>(arr: T[]): T[] {
@@ -53,11 +62,11 @@ export function createRoom(cfg?: Partial<RoomConfig>): Room {
     id,
     players: {},
     roles: {},
-    market: { N: 0 },
+    market: { N: 0, prices: { ...BASE_PRICES } },
     round: null,
     phase: 'LOBBY',
     config,
-    deck: shuffle(simpleDeck),
+    deck: shuffle(generalEvents.map((e) => e.id)),
     offers: [],
     currentRoundLogs: {},
   }
@@ -69,11 +78,36 @@ export function joinRoom(room: Room, name: string): Player {
     throw new Error('Room full')
   }
   const id = nanoid(10)
+  // Generate varied starting portfolio with equal total value (based on BASE_PRICES)
+  const targetValue =
+    room.config.startingAssets.TKL * BASE_PRICES.TKL +
+    room.config.startingAssets.TG * BASE_PRICES.TG +
+    room.config.startingAssets.TS * BASE_PRICES.TS +
+    room.config.startingAssets.C * BASE_PRICES.C
+
+  // Work in units of 5 to keep integers: 4*T + 12*C + G + S = W
+  let W = Math.floor(targetValue / 5)
+  // Rule: TS phải đủ để mua được 1 C theo giá nền
+  const minTSForOneC = Math.ceil(BASE_PRICES.C / BASE_PRICES.TS) // 60/5 = 12
+  const Smin = Math.min(W, minTSForOneC)
+  let R = W - Smin
+
+  const maxC = Math.floor(R / 12)
+  const C = Math.floor(Math.random() * (maxC + 1))
+  const rem1 = R - 12 * C
+  const maxT = Math.floor(rem1 / 4)
+  const TKL = Math.floor(Math.random() * (maxT + 1))
+  const rem2 = rem1 - 4 * TKL
+  const G = Math.floor(Math.random() * (rem2 + 1))
+  const Sextra = rem2 - G
+  const TG = G
+  const TS = Smin + Sextra
+
   const player: Player = {
     id,
     name,
     connected: true,
-    assets: { ...room.config.startingAssets },
+    assets: { TKL, TG, TS, C },
   }
   room.players[id] = player
   return player
@@ -98,37 +132,37 @@ function buildPairings(players: PlayerId[]): Pairing[] {
 }
 
 function drawEventAndUpdateMarket(room: Room): MarketState {
-  const card = room.deck.shift() || 'STABLE_MOOD'
-  let N = room.market.N
-  let inflation = false
-  let cryptoCrashFlag = false
-  switch (card) {
-    case 'CONFIDENCE_WAVE':
-      N = clampN(N + 1)
-      break
-    case 'RUMOR_SPREAD':
-      N = clampN(N - 1)
-      break
-    case 'PANIC_SELLING':
-      N = clampN(N - 2)
-      break
-    case 'STABLE_MOOD':
-      N = clampN(N + 0)
-      break
-    case 'SURPRISE_INFLATION':
-      inflation = true
-      break
-    case 'EXCHANGE_OUTAGE':
-      cryptoCrashFlag = true
-      N = clampN(N - 1)
-      break
+  // Draw one general event
+  const generalId = room.deck.shift() || 'STABLE_MOOD'
+  if (room.deck.length < 1) room.deck = shuffle(generalEvents.map((e) => e.id))
+  const g = generalEvents.find((e) => e.id === generalId) || generalEvents[3]
+  // Draw one crypto event
+  const c = cryptoEvents[Math.floor(Math.random() * cryptoEvents.length)]
+
+  // Start from base prices every round, then apply deltas
+  const next = { ...BASE_PRICES }
+  const applyDelta = (target: typeof next, eff: any) => {
+    ;(['TS','TG','TKL','C'] as const).forEach((k) => {
+      const d = eff?.[k]
+      if (typeof d === 'number') target[k] = Math.max(1, target[k] + d)
+    })
   }
+  applyDelta(next, g.eff)
+  applyDelta(next, c.eff)
+
+  const events = [
+    { id: g.id, title: g.title, description: g.desc },
+    { id: c.id, title: c.title, description: c.desc },
+  ]
+
   room.market = {
-    N: N as any,
-    lastEventId: card,
-    lastEventVi: eventVi[card] || card,
-    inflation,
-    cryptoCrashFlag,
+    N: room.market.N, // retained for compatibility, not used for pricing now
+    lastEventId: `${g.id}+${c.id}`,
+    lastEventVi: `${g.title} & ${c.title}`,
+    inflation: g.id === 'SURPRISE_INFLATION',
+    cryptoCrashFlag: !!c.cryptoCrashFlag,
+    prices: next,
+    events,
   }
   return room.market
 }
@@ -172,22 +206,20 @@ function applyOutcomeForPair(room: Room, a: Player, b?: Player) {
   const rc = room.round!
   const ca = rc.choices[a.id]
   const cb = b ? rc.choices[b.id] : undefined
-  const N = room.market.N
-  const priceTSBump = N >= 1 ? 1 : N <= -1 ? -1 : 0
-  const priceCBump = N <= -2 ? 3 : N <= -1 ? 1 : 0
-
-  // Helper to apply CRYPTO_GAMBLE on payload.amountC
-  const cryptoGamble = (p: Player, choice?: { payload?: any }) => {
-    const amt: number = Math.max(0, Math.min(p.assets.C, Number(choice?.payload?.amountC || 0)))
-    if (amt <= 0) return
-    const win = Math.random() < 0.5
-    if (win) p.assets.C += amt // x2: add same amount
-    else p.assets.C -= amt // lose selected amount
+  // Helper to buy Crypto using TS at current round prices
+  const buyCrypto = (p: Player, choice?: { payload?: any }) => {
+    const wantC: number = Math.floor(Number(choice?.payload?.amountC || 0))
+    if (!Number.isFinite(wantC) || wantC <= 0) return
+    const costTS = priceTSFor(room, 'C', wantC)
+    if (p.assets.TS < costTS) return
+    p.assets.TS -= costTS
+    p.assets.C += wantC
+    addLog(room, p.id, `Đầu tư Crypto: mua ${wantC} C với giá ${costTS} TS`)
   }
 
   // Default: if someone idle alone, no interaction except gamble
   if (!b) {
-    if (ca.action === 'CRYPTO_GAMBLE') cryptoGamble(a, ca)
+    if (ca.action === 'CRYPTO_GAMBLE') buyCrypto(a, ca)
     return
   }
 
@@ -195,41 +227,45 @@ function applyOutcomeForPair(room: Room, a: Player, b?: Player) {
   const A = ca.action
   const B = cb?.action
 
-  if (A === 'CRYPTO_GAMBLE') cryptoGamble(a, ca)
-  if (B === 'CRYPTO_GAMBLE') cryptoGamble(b, cb)
-
-  // Joint invest requires each to have 3 TS upfront in this pair evaluation
-  const canJoint = (p: Player) => p.assets.TS >= 3
-
-  if (A === 'COOPERATE' && B === 'COOPERATE') {
-    a.assets.TS += 5
-    b.assets.TS += 5
-  } else if (A === 'BETRAY' && B === 'BETRAY') {
-    // both suffer trust collapse indirectly via N recalculation after round
-    // no direct TS change here beyond later fees
-  } else if (A === 'BETRAY' && B === 'COOPERATE') {
-    a.assets.TS += 8
-    b.assets.TS -= 5
-  } else if (A === 'COOPERATE' && B === 'BETRAY') {
-    b.assets.TS += 8
-    a.assets.TS -= 5
-  } else if (A === 'JOINT_INVEST' && B === 'JOINT_INVEST') {
-    if (canJoint(a) && canJoint(b)) {
-      a.assets.TS -= 3
-      b.assets.TS -= 3
-      a.assets.TS += 5
-      b.assets.TS += 5
+  if (A === 'CRYPTO_GAMBLE') buyCrypto(a, ca)
+  if (B === 'CRYPTO_GAMBLE') buyCrypto(b, cb)
+  // Compute TS deltas for clear logging
+  if (b) {
+    let dA = 0
+    let dB = 0
+    let summary = ''
+    if (A === 'COOPERATE' && B === 'COOPERATE') {
+      dA += 5
+      dB += 5
+      summary = 'Cả hai COOPERATE: mỗi người +5 TS'
+    } else if (A === 'BETRAY' && B === 'BETRAY') {
+      // No direct TS change, only trust index may move later
+      summary = 'Cả hai BETRAY: không cộng/trừ TS trực tiếp'
+    } else if (A === 'BETRAY' && B === 'COOPERATE') {
+      dA += 8
+      dB -= 5
+      summary = 'Bạn BETRAY, đối thủ COOPERATE: bạn +8 TS, đối thủ -5 TS'
+    } else if (A === 'COOPERATE' && B === 'BETRAY') {
+      dB += 8
+      dA -= 5
+      summary = 'Bạn COOPERATE, đối thủ BETRAY: đối thủ +8 TS, bạn -5 TS'
     }
-  } else if (A === 'JOINT_INVEST' && B !== 'JOINT_INVEST') {
-    if (canJoint(a)) a.assets.TS -= 3 // one-sided loss if counterparty doesn’t join
-  } else if (B === 'JOINT_INVEST' && A !== 'JOINT_INVEST') {
-    if (canJoint(b)) b.assets.TS -= 3
-  }
 
-  // Temporary prices affect only in-round trading; MVP: no trading yet
-  // We keep bumps available in case we expand.
-  void priceTSBump
-  void priceCBump
+    // Apply and log per player
+    const fmt = (d: number) => (d > 0 ? `+${d}` : d < 0 ? `${d}` : '0')
+    a.assets.TS += dA
+    b.assets.TS += dB
+    addLog(
+      room,
+      a.id,
+      `Kết quả với ${b.name}: Bạn ${A || '—'}, ${b.name} ${B || '—'} → ${fmt(dA)} TS (${summary})`,
+    )
+    addLog(
+      room,
+      b.id,
+      `Kết quả với ${a.name}: Bạn ${B || '—'}, ${a.name} ${A || '—'} → ${fmt(dB)} TS (${summary})`,
+    )
+  }
 }
 
 function applyEndOfRoundFees(room: Room) {
@@ -263,8 +299,32 @@ function applyEndOfRoundFees(room: Room) {
       }
     })
   }
+  // Optional: slight TG erosion under inflation event (without breaking TG>=1 pricing rule)
+  if (room.market.inflation) {
+    Object.values(room.players).forEach((p) => {
+      // represent erosion as a small TS fee if holding much TG
+      if (p.assets.TG >= 10) p.assets.TS = Math.max(0, p.assets.TS - 1)
+    })
+  }
 
   return { fee1Count, fee2Count, deductedTS, cryptoLossCount, feeDetails, cryptoLoss }
+}
+
+// Ensure players have minimum TS by auto-converting other assets into TS at current prices
+function ensureMinimumTS(room: Room, minTS = 1) {
+  const order: Array<'TG'|'TKL'|'C'> = ['TG', 'TKL', 'C']
+  Object.values(room.players).forEach((p) => {
+    while (p.assets.TS < minTS) {
+      // Find first asset available to convert
+      const asset = order.find((k) => p.assets[k] > 0)
+      if (!asset) break
+      // Convert 1 unit of that asset to TS using current price
+      const tsGain = priceTSFor(room, asset, 1)
+      p.assets[asset] -= 1
+      p.assets.TS += tsGain
+      addLog(room, p.id, `Tự động quy đổi 1 ${asset} → +${tsGain} TS (đảm bảo tối thiểu TS)`)    
+    }
+  })
 }
 
 function recalcNFromOutcomes(room: Room) {
@@ -292,6 +352,8 @@ export function revealRound(room: Room) {
     if (pa) applyOutcomeForPair(room, pa, pb)
   }
   const fees = applyEndOfRoundFees(room)
+  // Enforce minimum TS rule after fees and crypto risks
+  ensureMinimumTS(room, 1)
   const prevN = room.market.N
   recalcNFromOutcomes(room)
   const notes: string[] = []
@@ -352,17 +414,13 @@ export function publicState(room: Room): PublicRoomState {
 
 // Indicative temporary prices for guidance only (not enforced)
 export function indicativePrices(room: Room) {
-  const N = room.market.N
-  const TS = 2 + (N >= 1 ? 1 : N <= -1 ? -1 : 0)
-  const C = 5 + (N <= -2 ? 3 : N <= -1 ? 1 : 0)
-  const TKL = 3
-  const TG = room.market.inflation ? 0 : 1
-  return { TS, C, TKL, TG }
+  // Now indicative equals the authoritative per-round prices
+  return { ...room.market.prices }
 }
 
 // Marketplace logic (player-to-player). We reserve assets on listing.
 function priceTSFor(room: Room, asset: 'TKL'|'TG'|'C', amount: number) {
-  const p = indicativePrices(room)
+  const p = room.market.prices
   const assetPts = asset === 'TKL' ? p.TKL : asset === 'TG' ? p.TG : p.C
   const tsPts = p.TS || 1
   const totalPts = assetPts * amount

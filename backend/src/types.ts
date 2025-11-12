@@ -2,7 +2,7 @@ export type Asset = { TKL: number; TG: number; TS: number; C: number };
 export type PlayerId = string;
 export type RoomId = string;
 export type NLevel = -2 | -1 | 0 | 1 | 2;
-export type Action = 'COOPERATE' | 'BETRAY' | 'JOINT_INVEST' | 'CRYPTO_GAMBLE';
+export type Action = 'COOPERATE' | 'BETRAY' | 'CRYPTO_GAMBLE';
 
 export interface Player {
   id: PlayerId;
@@ -27,6 +27,8 @@ export interface MarketState {
   lastEventVi?: string;
   inflation?: boolean;
   cryptoCrashFlag?: boolean;
+  prices: Asset; // authoritative per-round prices for scoring/trade conversion
+  events?: Array<{ id: string; title: string; description: string }>; // two events per round (1 crypto-specific)
 }
 
 export interface RoomConfig {
