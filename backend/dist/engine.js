@@ -195,10 +195,24 @@ function applyOutcomeForPair(room, a, b) {
         p.assets.C += wantC;
         addLog(room, p.id, `Đầu tư Crypto: mua ${wantC} C với giá ${costTS} TS`);
     };
+    // Helper to buy TKL using TS at current round prices
+    const buyTKL = (p, choice) => {
+        const wantTKL = Math.floor(Number(choice?.payload?.amountTKL || 0));
+        if (!Number.isFinite(wantTKL) || wantTKL <= 0)
+            return;
+        const costTS = priceTSFor(room, 'TKL', wantTKL);
+        if (p.assets.TS < costTS)
+            return;
+        p.assets.TS -= costTS;
+        p.assets.TKL += wantTKL;
+        addLog(room, p.id, `Mua vàng (TKL): +${wantTKL} TKL với giá ${costTS} TS`);
+    };
     // Default: if someone idle alone, no interaction except gamble
     if (!b) {
         if (ca.action === 'CRYPTO_GAMBLE')
             buyCrypto(a, ca);
+        if (ca.action === 'BUY_TKL')
+            buyTKL(a, ca);
         return;
     }
     // Evaluate pair outcomes
@@ -208,21 +222,40 @@ function applyOutcomeForPair(room, a, b) {
         buyCrypto(a, ca);
     if (B === 'CRYPTO_GAMBLE')
         buyCrypto(b, cb);
-    if (A === 'COOPERATE' && B === 'COOPERATE') {
-        a.assets.TS += 5;
-        b.assets.TS += 5;
-    }
-    else if (A === 'BETRAY' && B === 'BETRAY') {
-        // both suffer trust collapse indirectly via N recalculation after round
-        // no direct TS change here beyond later fees
-    }
-    else if (A === 'BETRAY' && B === 'COOPERATE') {
-        a.assets.TS += 8;
-        b.assets.TS -= 5;
-    }
-    else if (A === 'COOPERATE' && B === 'BETRAY') {
-        b.assets.TS += 8;
-        a.assets.TS -= 5;
+    if (A === 'BUY_TKL')
+        buyTKL(a, ca);
+    if (B === 'BUY_TKL')
+        buyTKL(b, cb);
+    // Compute TS deltas for clear logging
+    if (b) {
+        let dA = 0;
+        let dB = 0;
+        let summary = '';
+        if (A === 'COOPERATE' && B === 'COOPERATE') {
+            dA += 5;
+            dB += 5;
+            summary = 'Cả hai COOPERATE: mỗi người +5 TS';
+        }
+        else if (A === 'BETRAY' && B === 'BETRAY') {
+            // No direct TS change, only trust index may move later
+            summary = 'Cả hai BETRAY: không cộng/trừ TS trực tiếp';
+        }
+        else if (A === 'BETRAY' && B === 'COOPERATE') {
+            dA += 8;
+            dB -= 5;
+            summary = 'Bạn BETRAY, đối thủ COOPERATE: bạn +8 TS, đối thủ -5 TS';
+        }
+        else if (A === 'COOPERATE' && B === 'BETRAY') {
+            dB += 8;
+            dA -= 5;
+            summary = 'Bạn COOPERATE, đối thủ BETRAY: đối thủ +8 TS, bạn -5 TS';
+        }
+        // Apply and log per player
+        const fmt = (d) => (d > 0 ? `+${d}` : d < 0 ? `${d}` : '0');
+        a.assets.TS += dA;
+        b.assets.TS += dB;
+        addLog(room, a.id, `Kết quả với ${b.name}: Bạn ${A || '—'}, ${b.name} ${B || '—'} → ${fmt(dA)} TS (${summary})`);
+        addLog(room, b.id, `Kết quả với ${a.name}: Bạn ${B || '—'}, ${a.name} ${A || '—'} → ${fmt(dB)} TS (${summary})`);
     }
 }
 function applyEndOfRoundFees(room) {

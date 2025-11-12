@@ -2,7 +2,7 @@ export type Asset = { TKL: number; TG: number; TS: number; C: number };
 export type PlayerId = string;
 export type RoomId = string;
 export type NLevel = -2 | -1 | 0 | 1 | 2;
-export type Action = 'COOPERATE' | 'BETRAY' | 'CRYPTO_GAMBLE';
+export type Action = 'COOPERATE' | 'BETRAY' | 'CRYPTO_GAMBLE' | 'BUY_TKL';
 
 export interface Player {
   id: PlayerId;

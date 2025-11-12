@@ -216,10 +216,21 @@ function applyOutcomeForPair(room: Room, a: Player, b?: Player) {
     p.assets.C += wantC
     addLog(room, p.id, `Đầu tư Crypto: mua ${wantC} C với giá ${costTS} TS`)
   }
+  // Helper to buy TKL using TS at current round prices
+  const buyTKL = (p: Player, choice?: { payload?: any }) => {
+    const wantTKL: number = Math.floor(Number(choice?.payload?.amountTKL || 0))
+    if (!Number.isFinite(wantTKL) || wantTKL <= 0) return
+    const costTS = priceTSFor(room, 'TKL', wantTKL)
+    if (p.assets.TS < costTS) return
+    p.assets.TS -= costTS
+    p.assets.TKL += wantTKL
+    addLog(room, p.id, `Mua vàng (TKL): +${wantTKL} TKL với giá ${costTS} TS`)
+  }
 
   // Default: if someone idle alone, no interaction except gamble
   if (!b) {
     if (ca.action === 'CRYPTO_GAMBLE') buyCrypto(a, ca)
+    if (ca.action === 'BUY_TKL') buyTKL(a, ca)
     return
   }
 
@@ -229,6 +240,8 @@ function applyOutcomeForPair(room: Room, a: Player, b?: Player) {
 
   if (A === 'CRYPTO_GAMBLE') buyCrypto(a, ca)
   if (B === 'CRYPTO_GAMBLE') buyCrypto(b, cb)
+  if (A === 'BUY_TKL') buyTKL(a, ca)
+  if (B === 'BUY_TKL') buyTKL(b, cb)
   // Compute TS deltas for clear logging
   if (b) {
     let dA = 0
