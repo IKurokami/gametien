@@ -8,8 +8,9 @@ services:
     autoDeploy: true
     plan: free
 
-  - type: static_site
+  - type: web
     name: gametien-frontend
+    env: static
     rootDirectory: mlngame
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
