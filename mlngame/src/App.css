@@ -1,0 +1,53 @@
+#root { max-width: 2000px; margin: 0 auto; padding: 1rem; }
+.topbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(580px, 1fr)); gap: 12px; align-items: start; }
+.panel { background: #1e1e1e; border: 1px solid #333; border-radius: 8px; padding: 12px; }
+.panel-title { font-weight: 700; margin-bottom: 8px; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; }
+.badges { display: flex; gap: 8px; margin-top: 6px; }
+.badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #555; }
+.badge.warn { background: #3b2f00; color: #ffd666; border-color: #7a5b00; }
+.badge.danger { background: #3b0000; color: #ff9a9a; border-color: #7a0000; }
+.table { display: grid; gap: 4px; }
+.thead, .trow { display: grid; grid-template-columns: 1fr 48px 48px 48px 48px; gap: 8px; }
+.thead { font-weight: 700; opacity: 0.8; }
+.trow.me { background: rgba(100, 149, 237, 0.12); border-radius: 6px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.crypto-row { display: flex; gap: 8px; align-items: center; grid-column: 1 / span 2; }
+.ghost { background: transparent; border: 1px dashed #555; }
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
