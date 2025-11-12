@@ -13,12 +13,12 @@ services:
     env: static
     rootDir: mlngame
     # Build with VITE_API_BASE derived from backend host
-    buildCommand: npm ci && VITE_API_BASE=https://$BACKEND_HOST npm run build
+    buildCommand: npm ci && VITE_API_BASE=https://$BACKEND_HOSTPORT npm run build
     staticPublishPath: dist
     autoDeploy: true
     envVars:
-      - key: BACKEND_HOST
+      - key: BACKEND_HOSTPORT
         fromService:
           name: gametien-backend
           type: web
-          property: host
+          property: hostport
